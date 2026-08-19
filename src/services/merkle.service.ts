@@ -1,7 +1,10 @@
 import { keccak256 } from "ethers";
+import { Buffer } from "buffer";
 
-export const generateMerkleRoot = (payload) => {
-  const leaves = Object.values(payload).map((v) => keccak256(Buffer.from(String(v))));
-  const root = keccak256(Buffer.concat(leaves));
-  return root;
-};
+export function generateMerkleRoot(leaves: string[]): string {
+  const buffers = leaves.map(leaf =>
+    Buffer.from(leaf.replace(/^0x/, ""), "hex")
+  );
+  const concatenated = Buffer.concat(buffers);
+  return keccak256(concatenated);
+}

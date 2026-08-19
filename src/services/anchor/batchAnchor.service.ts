@@ -4,20 +4,6 @@ import { logAudit } from "../audit/log";
 
 const prisma = new PrismaClient();
 
-/**
- * Batch Anchor Service (Mortgage Underwriting — Option A)
- *
- * Steps:
- *  1. Load underwriting cases
- *  2. Build leaf: `${caseId}:${riskScore}`
- *  3. Generate individual Merkle roots
- *  4. Generate batch Merkle root
- *  5. Simulate Polygon txHash + blockNumber
- *  6. Create AnchorBatch
- *  7. Create AnchorRecord for each case
- *  8. Update each UnderwritingCase with anchor metadata
- *  9. Audit log
- */
 export async function batchAnchorCases(caseIds: number[]) {
   if (!Array.isArray(caseIds) || caseIds.length === 0) {
     throw new Error("caseIds must be a non-empty array");
@@ -41,6 +27,7 @@ export async function batchAnchorCases(caseIds: number[]) {
 
     anchorRecords.push({
       caseId: c.id,
+      applicationId: c.id.toString(), // ✅ map caseId to applicationId
       leaf,
       merkleRoot,
       riskScore: c.riskScore
@@ -71,7 +58,7 @@ export async function batchAnchorCases(caseIds: number[]) {
   for (const record of anchorRecords) {
     await prisma.anchorRecord.create({
       data: {
-        caseId: record.caseId,
+        applicationId: record.applicationId, // ✅ schema field
         merkleRoot: record.merkleRoot,
         txHash,
         blockNumber,

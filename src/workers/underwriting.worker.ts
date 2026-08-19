@@ -1,10 +1,10 @@
-import { Worker } from "./connection";
+import { Worker } from "bullmq"; 
 import { underwritingQueue, anchoringQueue, notificationQueue } from "../queue/queues";
 import { PrismaClient } from "@prisma/client";
 import { runMortgageUnderwriting } from "../services/underwriting/engine";
+import { connection } from "./connection"; // ✅ clean import
 
 const prisma = new PrismaClient();
-
 /**
  * Underwriting Worker (Mortgage Underwriting — Option A)
  *
@@ -36,7 +36,6 @@ export const underwritingWorker = new Worker(
     if (!ucase) {
       throw new Error(`Underwriting case ${caseId} not found`);
     }
-
     // Run mortgage underwriting engine
     const result = await runMortgageUnderwriting({
       borrower: ucase.borrower,
@@ -54,11 +53,10 @@ export const underwritingWorker = new Worker(
         financialScore: result.financialScore,
         behaviorScore: result.behaviorScore,
         decision: result.decision,
-        pricingModel: result.pricing,
+        pricingJson: JSON.stringify(result.pricing), // ✅ schema field
         decidedAt: new Date()
       }
     });
-
     // Queue anchoring
     await anchoringQueue.add("anchor", {
       caseId,
@@ -74,5 +72,5 @@ export const underwritingWorker = new Worker(
 
     return result;
   },
-  { connection: require("./connection").connection }
+  { connection } // ✅ simplified
 );
