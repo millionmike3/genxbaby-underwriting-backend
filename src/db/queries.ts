@@ -68,3 +68,6 @@ export async function getUnderwritingCase(id: number | string) {
 
 export async function listUnderwritingCases() {
   return prisma.underwritingCase.findMany({
+    // add options if needed, or leave empty
+  });
+}
