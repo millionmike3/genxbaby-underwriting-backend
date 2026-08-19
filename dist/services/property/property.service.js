@@ -1,12 +1,29 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sanitizeProperty = exports.propertyService = void 0;
-const client_1 = require("../db/client");
+const client_1 = require("@prisma/client");
+const prisma = new client_1.PrismaClient();
+/**
+ * Property CRUD Service
+ */
 exports.propertyService = {
     async create(data) {
-        return client_1.prisma.property.create({ data });
+        return prisma.property.create({ data });
     },
+    async list() {
+        return prisma.property.findMany({
+            orderBy: { createdAt: "desc" }
+        });
+    },
+    async get(id) {
+        return prisma.property.findUnique({
+            where: { id }
+        });
+    }
 };
+/**
+ * Utility Functions
+ */
 const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, value));
 const normalizeAddress = (input) => {
     return `${input.address.trim()}, ${input.city.trim()}, ${input.state.trim()} ${input.postalCode.trim()}, ${input.country.trim()}`;
@@ -44,6 +61,9 @@ const scoreCollateral = (input, ltv) => {
     }
     return { collateralScore: clamp(baseScore), flags };
 };
+/**
+ * Property Sanitization / Underwriting Prep
+ */
 const sanitizeProperty = async (input) => {
     const normalizedAddress = normalizeAddress(input);
     const ltv = calculateLtv(input.loanAmount, input.estimatedValue);

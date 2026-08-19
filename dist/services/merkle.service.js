@@ -1,10 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateMerkleRoot = void 0;
-const ethers_1 = require("ethers");
-const generateMerkleRoot = (payload) => {
-    const leaves = Object.values(payload).map((v) => (0, ethers_1.keccak256)(Buffer.from(String(v))));
-    const root = (0, ethers_1.keccak256)(Buffer.concat(leaves));
-    return root;
-};
 exports.generateMerkleRoot = generateMerkleRoot;
+const ethers_1 = require("ethers");
+const buffer_1 = require("buffer");
+function generateMerkleRoot(leaves) {
+    const buffers = leaves.map(leaf => buffer_1.Buffer.from(leaf.replace(/^0x/, ""), "hex"));
+    const concatenated = buffer_1.Buffer.concat(buffers);
+    return (0, ethers_1.keccak256)(concatenated);
+}

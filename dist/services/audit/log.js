@@ -1,14 +1,24 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.logAudit = logAudit;
-const prisma_1 = require("../db/prisma");
-async function logAudit({ actor, action, target, metadata }) {
-    await prisma_1.prisma.auditLog.create({
+const client_1 = require("@prisma/client");
+const prisma = new client_1.PrismaClient();
+/**
+ * Audit Logging Service
+ *
+ * Records admin actions such as:
+ *  - batch anchoring
+ *  - underwriting decisions
+ *  - system events
+ */
+async function logAudit(params) {
+    const { actor, action, metadata, ip } = params;
+    return prisma.auditLog.create({
         data: {
-            actor,
+            adminId: actor,
             action,
-            target,
-            metadata
+            ip: ip ?? null,
+            metadata: metadata ?? null
         }
     });
 }

@@ -1,24 +1,22 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createUnderwritingCase = createUnderwritingCase;
-exports.runUnderwriting = runUnderwriting;
-const engine_1 = require("../services/underwriting/engine");
-async function createUnderwritingCase(req, res) {
-    try {
-        const caseRecord = await engine_1.underwritingService.createCase(req.body);
-        res.status(201).json(caseRecord);
-    }
-    catch (err) {
-        res.status(400).json({ error: err.message });
-    }
+exports.createCase = createCase;
+exports.getCase = getCase;
+exports.listCases = listCases;
+const queries_1 = require("../db/queries");
+const queues_1 = require("../queue/queues");
+async function createCase(req, res) {
+    const data = req.body;
+    const ucase = await (0, queries_1.createUnderwritingCase)(data);
+    await queues_1.underwritingQueue.add("underwrite", { caseId: ucase.id });
+    res.json({ success: true, case: ucase });
 }
-async function runUnderwriting(req, res) {
-    try {
-        const id = Number(req.params.id);
-        const result = await engine_1.underwritingService.run(id);
-        res.status(200).json(result);
-    }
-    catch (err) {
-        res.status(400).json({ error: err.message });
-    }
+async function getCase(req, res) {
+    const id = Number(req.params.id);
+    const ucase = await (0, queries_1.getUnderwritingCase)(id);
+    res.json({ case: ucase });
+}
+async function listCases(req, res) {
+    const cases = await (0, queries_1.listUnderwritingCases)();
+    res.json({ cases });
 }

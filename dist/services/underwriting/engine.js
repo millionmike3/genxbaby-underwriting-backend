@@ -1,71 +1,76 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.underwritingService = void 0;
-const client_1 = require("../../db/client");
-const merkle_service_1 = require("../merkle/merkle.service");
-exports.underwritingService = {
-    async createCase(data) {
-        return client_1.prisma.underwritingCase.create({ data });
-    },
-    async run(id) {
-        const uw = await client_1.prisma.underwritingCase.findUnique({
-            where: { id },
-            include: { borrower: true, mortgage: true },
-        });
-        if (!uw)
-            throw new Error('Underwriting case not found');
-        const riskScore = this.computeRisk(uw);
-        const collateralScore = this.computeCollateral(uw);
-        const fraudScore = this.computeFraud(uw);
-        const financialScore = this.computeFinancial(uw);
-        const behaviorScore = this.computeBehavior(uw);
-        const decision = riskScore < 0.3 || fraudScore > 0.7 ? 'DECLINE' : 'APPROVE';
-        const merkleRoot = (0, merkle_service_1.createMerkleRoot)({
-            borrowerId: uw.borrowerId,
-            mortgageId: uw.mortgageId,
-            riskScore,
-            collateralScore,
-            fraudScore,
-            financialScore,
-            behaviorScore,
-            decision,
-        });
-        const updated = await client_1.prisma.underwritingCase.update({
-            where: { id },
-            data: {
-                riskScore,
-                collateralScore,
-                fraudScore,
-                financialScore,
-                behaviorScore,
-                decision,
-                merkleRoot,
-            },
-        });
-        return updated;
-    },
-    computeRisk(uw) {
-        const loan = uw.mortgage.loanAmount || 0;
-        const income = uw.borrower.annualIncome || 1;
-        const ratio = loan / income;
-        return Math.min(1, ratio / 5); // simple heuristic
-    },
-    computeCollateral(uw) {
-        const mv = uw.mortgage.property?.marketValue || 0;
-        const loan = uw.mortgage.loanAmount || 0;
-        if (!mv || !loan)
-            return 0.5;
-        const ltv = loan / mv;
-        return 1 - Math.min(1, ltv);
-    },
-    computeFraud(_uw) {
-        return 0.1; // placeholder
-    },
-    computeFinancial(uw) {
-        const cs = uw.borrower.creditScore || 600;
-        return Math.min(1, cs / 850);
-    },
-    computeBehavior(_uw) {
-        return 0.5; // placeholder
-    },
-};
+exports.runMortgageUnderwriting = runMortgageUnderwriting;
+exports.createUnderwritingCase = createUnderwritingCase;
+const client_1 = require("@prisma/client");
+const prisma = new client_1.PrismaClient();
+/**
+ * Mortgage Underwriting Engine (Option A)
+ *
+ * This engine:
+ *  - computes LTV
+ *  - computes collateral score
+ *  - computes fraud score
+ *  - computes financial score
+ *  - computes behavior score
+ *  - computes risk score
+ *  - determines decision + pricing
+ *
+ * Merkle root is NOT generated here — anchoring worker handles that.
+ */
+async function runMortgageUnderwriting({ borrower, mortgage, property }) {
+    // -----------------------------
+    // Collateral / LTV
+    // -----------------------------
+    const loanAmount = mortgage.loanAmount || 0;
+    const estimatedValue = property.estimatedValue || 0;
+    const ltv = estimatedValue > 0 ? loanAmount / estimatedValue : 1;
+    const collateralScore = Math.max(0, 100 - ltv * 100); // 0–100
+    // -----------------------------
+    // Fraud Score (placeholder)
+    // -----------------------------
+    const fraudScore = borrower.ssn ? 0 : 50;
+    // -----------------------------
+    // Financial Score
+    // -----------------------------
+    const creditScore = borrower.creditScore || 600;
+    const financialScore = Math.min(100, (creditScore / 850) * 100);
+    // -----------------------------
+    // Behavior Score (placeholder)
+    // -----------------------------
+    const behaviorScore = 70;
+    // -----------------------------
+    // Risk Score (lower is better)
+    // -----------------------------
+    const riskScore = (100 - collateralScore) +
+        (700 - creditScore) / 10 +
+        fraudScore +
+        (100 - behaviorScore);
+    // -----------------------------
+    // Decision
+    // -----------------------------
+    const decision = riskScore < 200 ? "APPROVE" : "DECLINE";
+    // -----------------------------
+    // Pricing Model
+    // -----------------------------
+    const pricing = {
+        rate: decision === "APPROVE" ? 6.25 : null,
+        points: decision === "APPROVE" ? 1.0 : null
+    };
+    return {
+        ltv,
+        collateralScore,
+        fraudScore,
+        financialScore,
+        behaviorScore,
+        riskScore,
+        decision,
+        pricing
+    };
+}
+/**
+ * Create underwriting case (Option A)
+ */
+async function createUnderwritingCase(data) {
+    return prisma.underwritingCase.create({ data });
+}

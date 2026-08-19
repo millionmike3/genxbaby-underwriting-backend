@@ -1,5 +1,14 @@
 import { Queue } from "bullmq";
 import { connection } from "../workers/connection";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
+
+export async function listUnderwritingCases() {
+  return prisma.underwritingCase.findMany({
+    // Add filters or includes if needed, otherwise leave empty
+  });
+}
 
 /**
  * Underwriting Queue

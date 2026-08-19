@@ -1,56 +1,70 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.underwritingWorker = exports.notificationQueue = exports.anchoringQueue = void 0;
-const connection_1 = require("./connection");
-const client_1 = require("@prisma/client");
+exports.underwritingWorker = void 0;
 const bullmq_1 = require("bullmq");
-const connection_2 = require("./connection");
+const queues_1 = require("../queue/queues");
+const client_1 = require("@prisma/client");
+const engine_1 = require("../services/underwriting/engine");
+const connection_1 = require("./connection"); // ✅ clean import
 const prisma = new client_1.PrismaClient();
-// Queues
-exports.anchoringQueue = new bullmq_1.Queue("anchoring", { connection: connection_2.connection });
-exports.notificationQueue = new bullmq_1.Queue("notifications", { connection: connection_2.connection });
 /**
- * Underwriting Worker (Mortgage Underwriting System)
+ * Underwriting Worker (Mortgage Underwriting — Option A)
  *
  * This worker:
  *  - loads the underwriting case
- *  - computes a risk score
- *  - updates the case
- *  - enqueues anchoring
- *  - enqueues notifications
+ *  - loads borrower + mortgage + property
+ *  - runs the mortgage underwriting engine
+ *  - saves risk scores + decision
+ *  - enqueues anchoring + notifications
  */
-exports.underwritingWorker = new connection_1.Worker("underwriting", async (job) => {
+exports.underwritingWorker = new bullmq_1.Worker("underwriting", async (job) => {
     const { caseId } = job.data;
-    // Load underwriting case with borrower + mortgage
-    const uwCase = await prisma.underwritingCase.findUnique({
+    // Load underwriting case with borrower + mortgage + property
+    const ucase = await prisma.underwritingCase.findUnique({
         where: { id: caseId },
         include: {
             borrower: true,
             mortgage: {
-                include: { property: true }
+                include: {
+                    property: true
+                }
             }
         }
     });
-    if (!uwCase) {
+    if (!ucase) {
         throw new Error(`Underwriting case ${caseId} not found`);
     }
-    // Simple risk scoring model (placeholder)
-    const creditScore = uwCase.borrower.creditScore ?? 600;
-    const riskScore = creditScore / 850;
-    // Update underwriting case with risk score
+    // Run mortgage underwriting engine
+    const result = await (0, engine_1.runMortgageUnderwriting)({
+        borrower: ucase.borrower,
+        mortgage: ucase.mortgage,
+        property: ucase.mortgage.property
+    });
+    // Save underwriting results
     await prisma.underwritingCase.update({
         where: { id: caseId },
-        data: { riskScore }
+        data: {
+            riskScore: result.riskScore,
+            collateralScore: result.collateralScore,
+            fraudScore: result.fraudScore,
+            financialScore: result.financialScore,
+            behaviorScore: result.behaviorScore,
+            decision: result.decision,
+            pricingJson: JSON.stringify(result.pricing), // ✅ schema field
+            decidedAt: new Date()
+        }
     });
-    // Enqueue anchoring job
-    await exports.anchoringQueue.add("anchor", {
+    // Queue anchoring
+    await queues_1.anchoringQueue.add("anchor", {
         caseId,
-        leaf: `${caseId}:${riskScore}`
+        leaf: `${caseId}:${result.riskScore}`
     });
-    // Enqueue notification job
-    await exports.notificationQueue.add("decision", {
-        type: "UNDERWRITING_COMPLETE",
-        message: `Underwriting completed for case ${caseId} with risk score ${riskScore}`
+    // Queue notification
+    await queues_1.notificationQueue.add("decision", {
+        caseId,
+        decision: result.decision,
+        riskScore: result.riskScore
     });
-    return { caseId, riskScore };
-}, { connection: connection_2.connection });
+    return result;
+}, { connection: connection_1.connection } // ✅ simplified
+);

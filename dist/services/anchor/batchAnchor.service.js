@@ -5,59 +5,37 @@ const client_1 = require("@prisma/client");
 const merkle_service_1 = require("../merkle.service");
 const log_1 = require("../audit/log");
 const prisma = new client_1.PrismaClient();
-/**
- * Batch Anchoring Service (Mortgage Underwriting Version)
- *
- * Anchors multiple underwriting cases in a single batch.
- * Produces:
- *  - batch Merkle root
- *  - Polygon txHash
- *  - block number
- *  - anchor timestamp
- *  - anchor records linked to batch
- */
 async function batchAnchorCases(caseIds) {
     if (!Array.isArray(caseIds) || caseIds.length === 0) {
         throw new Error("caseIds must be a non-empty array");
     }
     const anchorRecords = [];
-    // Step 1 — Load underwriting cases + collect individual Merkle leaves
-    for (const caseId of caseIds) {
-        const uwCase = await prisma.underwritingCase.findUnique({
-            where: { id: caseId },
-            include: {
-                borrower: true,
-                mortgage: {
-                    include: { property: true }
-                }
-            }
-        });
-        if (!uwCase) {
-            anchorRecords.push({
-                caseId,
-                error: "Underwriting case not found"
-            });
-            continue;
-        }
-        // Simple risk score fallback
-        const riskScore = uwCase.riskScore ?? 0;
-        // Merkle leaf = caseId + riskScore
-        const leaf = `${caseId}:${riskScore}`;
+    // Step 1 — Load underwriting cases
+    const cases = await prisma.underwritingCase.findMany({
+        where: { id: { in: caseIds } }
+    });
+    if (cases.length === 0) {
+        throw new Error("No underwriting cases found for provided IDs");
+    }
+    // Step 2 — Build leaves + individual Merkle roots
+    for (const c of cases) {
+        const leaf = `${c.id}:${c.riskScore}`;
+        const merkleRoot = (0, merkle_service_1.generateMerkleRoot)([leaf]);
         anchorRecords.push({
-            caseId,
+            caseId: c.id,
+            applicationId: c.id.toString(), // ✅ map caseId to applicationId
             leaf,
-            riskScore
+            merkleRoot,
+            riskScore: c.riskScore
         });
     }
-    // Step 2 — Generate batch Merkle root
-    const batchMerkleRoot = (0, merkle_service_1.generateMerkleRoot)(anchorRecords.map(r => r.leaf));
-    // Step 3 — Anchor batch Merkle root on-chain
-    // NOTE: anchorCase() anchors a single case, so for batch anchoring
-    // we simulate a single batch anchor transaction.
-    const txHash = `0x${batchMerkleRoot.slice(2, 66)}`; // placeholder
+    // Step 3 — Batch Merkle root
+    const batchMerkleRoot = (0, merkle_service_1.generateMerkleRoot)(anchorRecords.map(r => r.merkleRoot));
+    // Step 4 — Simulate Polygon anchoring
+    const txHash = `0x${batchMerkleRoot.slice(2, 66)}`;
     const blockNumber = Math.floor(Math.random() * 1000000);
     const anchoredAt = new Date();
-    // Step 4 — Create batch record
+    // Step 5 — Create batch record
     const batch = await prisma.anchorBatch.create({
         data: {
             merkleRoot: batchMerkleRoot,
@@ -66,14 +44,12 @@ async function batchAnchorCases(caseIds) {
             anchoredAt
         }
     });
-    // Step 5 — Create individual anchor records
+    // Step 6 — Create individual anchor records + update cases
     for (const record of anchorRecords) {
-        if (record.error)
-            continue;
         await prisma.anchorRecord.create({
             data: {
-                applicationId: record.caseId.toString(), // required field in schema
-                merkleRoot: batchMerkleRoot,
+                applicationId: record.applicationId, // ✅ schema field
+                merkleRoot: record.merkleRoot,
                 txHash,
                 blockNumber,
                 anchoredAt,
@@ -81,8 +57,17 @@ async function batchAnchorCases(caseIds) {
                 riskScore: record.riskScore
             }
         });
+        await prisma.underwritingCase.update({
+            where: { id: record.caseId },
+            data: {
+                merkleRoot: record.merkleRoot,
+                anchoredTxHash: txHash,
+                anchoredBlock: blockNumber,
+                anchoredAt
+            }
+        });
     }
-    // Step 6 — Audit log
+    // Step 7 — Audit log
     await (0, log_1.logAudit)({
         actor: "admin",
         action: "BATCH_ANCHOR",
