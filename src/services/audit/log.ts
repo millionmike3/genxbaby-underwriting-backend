@@ -1,22 +1,30 @@
-import { prisma } from "@/db/prisma";
+import { PrismaClient } from "@prisma/client";
 
-export async function logAudit({
-  actor,
-  action,
-  target,
-  metadata
-}: {
-  actor: string;
-  action: string;
-  target?: string;
-  metadata?: any;
+const prisma = new PrismaClient();
+
+/**
+ * Audit Logging Service
+ *
+ * Records admin actions such as:
+ *  - batch anchoring
+ *  - underwriting decisions
+ *  - system events
+ */
+export async function logAudit(params: {
+  actor: string;        // adminId
+  action: string;       // what happened
+  target?: string | number; // optional target entity
+  metadata?: any;       // optional JSON metadata
+  ip?: string;          // optional IP address
 }) {
-  await prisma.auditLog.create({
+  const { actor, action, metadata, ip } = params;
+
+  return prisma.auditLog.create({
     data: {
-      actor,
+      adminId: actor,
       action,
-      target,
-      metadata
+      ip: ip ?? null,
+      metadata: metadata ?? null
     }
   });
 }

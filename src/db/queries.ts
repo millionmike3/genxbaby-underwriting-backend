@@ -1,84 +1,70 @@
 import { PrismaClient } from "@prisma/client";
+
 const prisma = new PrismaClient();
 
-// Create a borrower
-export async function createBorrower(data) {
+/* -------------------------------------------------------
+ * BORROWER
+ * -----------------------------------------------------*/
+export async function createBorrower(data: any) {
   return prisma.borrower.create({ data });
 }
 
-// Get borrower by ID
-export async function getBorrowerById(id: string) {
-  return prisma.borrower.findUnique({ where: { id } });
-}
-
-// Find borrower by last 4 of SSN
-export async function findBorrowerBySSNLast4(last4: string) {
-  return prisma.borrower.findFirst({ where: { ssnLast4: last4 } });
-}
-
-// Create a loan application
-export async function createApplication(data) {
-  return prisma.application.create({ data });
-}
-
-// Update application (status, docs, etc.)
-export async function updateApplication(id: string, data) {
-  return prisma.application.update({ where: { id }, data });
-}
-
-// Get full application with borrower + underwriting
-export async function getApplicationWithBorrower(id: string) {
-  return prisma.application.findUnique({
-    where: { id },
-    include: { borrower: true, underwriting: true, documents: true }
+export async function getBorrowerById(id: number | string) {
+  return prisma.borrower.findUnique({
+    where: { id: Number(id) }
   });
 }
 
-// List all applications (for admin dashboard)
-export async function listApplications() {
-  return prisma.application.findMany({
-    orderBy: { createdAt: "desc" },
-    include: { borrower: true, underwriting: true }
+/* -------------------------------------------------------
+ * PROPERTY
+ * -----------------------------------------------------*/
+export async function createProperty(data: any) {
+  return prisma.property.create({ data });
+}
+
+export async function getPropertyById(id: number | string) {
+  return prisma.property.findUnique({
+    where: { id: Number(id) }
   });
 }
 
-export async function attachDocument(appId: string, data) {
-  return prisma.document.create({
-    data: { ...data, applicationId: appId }
-  });
+/* -------------------------------------------------------
+ * MORTGAGE (Option A)
+ * -----------------------------------------------------*/
+export async function createMortgage(data: any) {
+  return prisma.mortgage.create({ data });
 }
 
-// Save risk score + signals
-export async function saveRiskScore(appId: string, score: number, signals: any) {
-  return prisma.underwriting.update({
-    where: { applicationId: appId },
-    data: {
-      riskScore: score,
-      fraudSignals: signals
-    }
-  });
-}
-
-// Save final underwriting decision
-export async function saveDecision(appId: string, decision: string, pricing: any) {
-  return prisma.underwriting.update({
-    where: { applicationId: appId },
-    data: {
-      decision,
-      pricingModel: pricing,
-      decidedAt: new Date()
-    }
-  });
-}
-
-// Get full underwriting file
-export async function getFullUnderwritingFile(appId: string) {
-  return prisma.underwriting.findUnique({
-    where: { applicationId: appId },
+export async function getMortgageById(id: number | string) {
+  return prisma.mortgage.findUnique({
+    where: { id: Number(id) },
     include: {
-      Application: {
-        include: { borrower: true, documents: true }
+      borrower: true,
+      property: true
+    }
+  });
+}
+
+/* -------------------------------------------------------
+ * UNDERWRITING CASE (Option A)
+ * -----------------------------------------------------*/
+export async function createUnderwritingCase(data: any) {
+  return prisma.underwritingCase.create({ data });
+}
+
+export async function getUnderwritingCase(id: number | string) {
+  return prisma.underwritingCase.findUnique({
+    where: { id: Number(id) },
+    include: {
+      borrower: true,
+      mortgage: {
+        include: {
+          property: true
+        }
       }
     }
   });
 }
+
+export async function listUnderwritingCases() {
+  return prisma.underwritingCase.findMany({

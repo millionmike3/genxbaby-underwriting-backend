@@ -2,7 +2,6 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createBorrower = createBorrower;
 exports.getBorrowerById = getBorrowerById;
-exports.findBorrowerBySSNLast4 = findBorrowerBySSNLast4;
 exports.createApplication = createApplication;
 exports.updateApplication = updateApplication;
 exports.getApplicationWithBorrower = getApplicationWithBorrower;
@@ -11,48 +10,65 @@ exports.attachDocument = attachDocument;
 exports.saveRiskScore = saveRiskScore;
 exports.saveDecision = saveDecision;
 exports.getFullUnderwritingFile = getFullUnderwritingFile;
+exports.createMortgage = createMortgage;
+exports.getMortgageById = getMortgageById;
+exports.createUnderwritingCase = createUnderwritingCase;
+exports.getUnderwritingCase = getUnderwritingCase;
+exports.listUnderwritingCases = listUnderwritingCases;
+exports.saveAnchorRecord = saveAnchorRecord;
+exports.saveAnchorBatch = saveAnchorBatch;
 const client_1 = require("@prisma/client");
 const prisma = new client_1.PrismaClient();
-// Create a borrower
+/* -------------------------------------------------------
+ * BORROWER
+ * -----------------------------------------------------*/
 async function createBorrower(data) {
     return prisma.borrower.create({ data });
 }
-// Get borrower by ID
 async function getBorrowerById(id) {
-    return prisma.borrower.findUnique({ where: { id } });
+    return prisma.borrower.findUnique({
+        where: { id: Number(id) }
+    });
 }
-// Find borrower by last 4 of SSN
-async function findBorrowerBySSNLast4(last4) {
-    return prisma.borrower.findFirst({ where: { ssnLast4: last4 } });
-}
-// Create a loan application
+/* -------------------------------------------------------
+ * APPLICATION (Your original underwriting system)
+ * -----------------------------------------------------*/
 async function createApplication(data) {
     return prisma.application.create({ data });
 }
-// Update application (status, docs, etc.)
 async function updateApplication(id, data) {
-    return prisma.application.update({ where: { id }, data });
-}
-// Get full application with borrower + underwriting
-async function getApplicationWithBorrower(id) {
-    return prisma.application.findUnique({
-        where: { id },
-        include: { borrower: true, underwriting: true, documents: true }
+    return prisma.application.update({
+        where: { id: String(id) },
+        data
     });
 }
-// List all applications (for admin dashboard)
+async function getApplicationWithBorrower(id) {
+    return prisma.application.findUnique({
+        where: { id: String(id) },
+        include: {
+            borrower: true,
+            underwriting: true,
+            documents: true
+        }
+    });
+}
 async function listApplications() {
     return prisma.application.findMany({
         orderBy: { createdAt: "desc" },
-        include: { borrower: true, underwriting: true }
+        include: {
+            borrower: true,
+            underwriting: true
+        }
     });
 }
 async function attachDocument(appId, data) {
     return prisma.document.create({
-        data: { ...data, applicationId: appId }
+        data: {
+            ...data,
+            applicationId: appId
+        }
     });
 }
-// Save risk score + signals
 async function saveRiskScore(appId, score, signals) {
     return prisma.underwriting.update({
         where: { applicationId: appId },
@@ -62,7 +78,6 @@ async function saveRiskScore(appId, score, signals) {
         }
     });
 }
-// Save final underwriting decision
 async function saveDecision(appId, decision, pricing) {
     return prisma.underwriting.update({
         where: { applicationId: appId },
@@ -73,14 +88,71 @@ async function saveDecision(appId, decision, pricing) {
         }
     });
 }
-// Get full underwriting file
 async function getFullUnderwritingFile(appId) {
     return prisma.underwriting.findUnique({
         where: { applicationId: appId },
         include: {
-            Application: {
-                include: { borrower: true, documents: true }
+            application: {
+                include: {
+                    borrower: true,
+                    documents: true
+                }
             }
         }
+    });
+}
+/* -------------------------------------------------------
+ * MORTGAGE UNDERWRITING (Option A)
+ * -----------------------------------------------------*/
+async function createMortgage(data) {
+    return prisma.mortgage.create({ data });
+}
+async function getMortgageById(id) {
+    return prisma.mortgage.findUnique({
+        where: { id: Number(id) },
+        include: {
+            borrower: true,
+            property: true
+        }
+    });
+}
+/* -------------------------------------------------------
+ * UNDERWRITING CASE (Mortgage Underwriting)
+ * -----------------------------------------------------*/
+async function createUnderwritingCase(data) {
+    return prisma.underwritingCase.create({ data });
+}
+async function getUnderwritingCase(id) {
+    return prisma.underwritingCase.findUnique({
+        where: { id: Number(id) },
+        include: {
+            borrower: true,
+            mortgage: {
+                include: {
+                    property: true
+                }
+            }
+        }
+    });
+}
+async function listUnderwritingCases() {
+    return prisma.underwritingCase.findMany({
+        orderBy: { createdAt: "desc" },
+        include: {
+            borrower: true,
+            mortgage: true
+        }
+    });
+}
+/* -------------------------------------------------------
+ * ANCHORING (AnchorRecord + AnchorBatch)
+ * -----------------------------------------------------*/
+async function saveAnchorRecord(data) {
+    return prisma.anchorRecord.create({ data });
+}
+async function saveAnchorBatch(data) {
+    return prisma.anchorBatch.create({
+        data,
+        include: { anchors: true }
     });
 }

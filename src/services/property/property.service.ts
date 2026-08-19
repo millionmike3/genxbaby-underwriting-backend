@@ -1,13 +1,32 @@
+import { PrismaClient } from "@prisma/client";
 import { PropertyInput, PropertySanitized } from "./property.types";
-import { prisma } from '../db/client'
 
+const prisma = new PrismaClient();
+
+/**
+ * Property CRUD Service
+ */
 export const propertyService = {
   async create(data: any) {
-    return prisma.property.create({ data })
+    return prisma.property.create({ data });
   },
-}
 
+  async list() {
+    return prisma.property.findMany({
+      orderBy: { createdAt: "desc" }
+    });
+  },
 
+  async get(id: number) {
+    return prisma.property.findUnique({
+      where: { id }
+    });
+  }
+};
+
+/**
+ * Utility Functions
+ */
 const clamp = (value: number, min = 0, max = 100) =>
   Math.max(min, Math.min(max, value));
 
@@ -51,6 +70,9 @@ const scoreCollateral = (input: PropertyInput, ltv: number) => {
   return { collateralScore: clamp(baseScore), flags };
 };
 
+/**
+ * Property Sanitization / Underwriting Prep
+ */
 export const sanitizeProperty = async (
   input: PropertyInput
 ): Promise<PropertySanitized> => {

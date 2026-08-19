@@ -1,40 +1,78 @@
-import { Worker } from './connection'
-import { underwritingCaseQueue, anchoringQueue, notificationQueue } from '../queue/queues'
-import { underwritingService } from '../services/underwriting/engine'
+import { Worker } from "./connection";
+import { underwritingQueue, anchoringQueue, notificationQueue } from "../queue/queues";
+import { PrismaClient } from "@prisma/client";
+import { runMortgageUnderwriting } from "../services/underwriting/engine";
 
+const prisma = new PrismaClient();
+
+/**
+ * Underwriting Worker (Mortgage Underwriting — Option A)
+ *
+ * This worker:
+ *  - loads the underwriting case
+ *  - loads borrower + mortgage + property
+ *  - runs the mortgage underwriting engine
+ *  - saves risk scores + decision
+ *  - enqueues anchoring + notifications
+ */
 export const underwritingWorker = new Worker(
-  'underwriting-case',
+  "underwriting",
   async job => {
-    const { caseId } = job.data as { caseId: number }
+    const { caseId } = job.data as { caseId: number };
 
-    const result = await underwritingService.run(caseId)
+    // Load underwriting case with borrower + mortgage + property
+    const ucase = await prisma.underwritingCase.findUnique({
+      where: { id: caseId },
+      include: {
+        borrower: true,
+        mortgage: {
+          include: {
+            property: true
+          }
+        }
+      }
+    });
 
-    // enqueue anchoring
-    await anchoringQueue.add('anchor', {
+    if (!ucase) {
+      throw new Error(`Underwriting case ${caseId} not found`);
+    }
+
+    // Run mortgage underwriting engine
+    const result = await runMortgageUnderwriting({
+      borrower: ucase.borrower,
+      mortgage: ucase.mortgage,
+      property: ucase.mortgage.property
+    });
+
+    // Save underwriting results
+    await prisma.underwritingCase.update({
+      where: { id: caseId },
+      data: {
+        riskScore: result.riskScore,
+        collateralScore: result.collateralScore,
+        fraudScore: result.fraudScore,
+        financialScore: result.financialScore,
+        behaviorScore: result.behaviorScore,
+        decision: result.decision,
+        pricingModel: result.pricing,
+        decidedAt: new Date()
+      }
+    });
+
+    // Queue anchoring
+    await anchoringQueue.add("anchor", {
       caseId,
-      merkleRoot: result.merkleRoot,
-    })
+      leaf: `${caseId}:${result.riskScore}`
+    });
 
-    // enqueue notification: decision
-    await notificationQueue.add('decision', {
+    // Queue notification
+    await notificationQueue.add("decision", {
       caseId,
       decision: result.decision,
-      riskScore: result.riskScore,
-      collateralScore: result.collateralScore,
-      fraudScore: result.fraudScore,
-      financialScore: result.financialScore,
-      behaviorScore: result.behaviorScore,
-    })
-     await prisma.underwritingCase.update({
-     where: { id: caseId },
-     data: {
-     anchoredTxHash: anchorResult.txHash,
-     anchoredBlock: anchorResult.blockNumber,
-     anchoredAt: new Date(anchorResult.anchoredAt),
-     },
-    })
+      riskScore: result.riskScore
+    });
 
-    return result
+    return result;
   },
-  { connection: require('../queue/connection').connection }
-)
+  { connection: require("./connection").connection }
+);
