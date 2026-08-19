@@ -256,12 +256,14 @@ model UnderwritingCase {
   financialScore  Float?
   behaviorScore   Float?
   decision        String    @default("PENDING")
+  pricingJson     String?
   merkleRoot      String?
   anchoredTxHash  String?
   anchoredBlock   Int?
   anchoredAt      DateTime?
   createdAt       DateTime  @default(now())
-
+  decidedAt       DateTime? 
+  
   borrower        Borrower  @relation(fields: [borrowerId], references: [id])
   mortgage        Mortgage  @relation(fields: [mortgageId], references: [id])
 }
